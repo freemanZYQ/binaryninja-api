@@ -1219,6 +1219,16 @@ class Function(object):
 		return binaryninja.mediumlevelil.MediumLevelILFunction(self.arch, core.BNGetFunctionMediumLevelIL(self.handle), self)
 
 	@property
+	def high_level_il(self):
+		"""Deprecated property provided for compatibility. Use hlil instead."""
+		return binaryninja.highlevelil.HighLevelILFunction(self.arch, core.BNGetFunctionHighLevelIL(self.handle), self)
+
+	@property
+	def hlil(self):
+		"""Function high level IL (read-only)"""
+		return binaryninja.highlevelil.HighLevelILFunction(self.arch, core.BNGetFunctionHighLevelIL(self.handle), self)
+
+	@property
 	def function_type(self):
 		"""Function type object"""
 		return types.Type(core.BNGetFunctionType(self.handle), platform = self.platform)
@@ -2975,6 +2985,8 @@ class DisassemblyTextRenderer(object):
 				self.handle = core.BNCreateLowLevelILDisassemblyTextRenderer(func.handle, settings_obj)
 			elif isinstance(func, binaryninja.mediumlevelil.MediumLevelILFunction):
 				self.handle = core.BNCreateMediumLevelILDisassemblyTextRenderer(func.handle, settings_obj)
+			elif isinstance(func, binaryninja.highlevelil.HighLevelILFunction):
+				self.handle = core.BNCreateHighLevelILDisassemblyTextRenderer(func.handle, settings_obj)
 			else:
 				raise TypeError("invalid function object")
 		else:
@@ -2995,6 +3007,9 @@ class DisassemblyTextRenderer(object):
 		mlil = core.BNGetDisassemblyTextRendererMediumLevelILFunction(self.handle)
 		if mlil:
 			return binaryninja.mediumlevelil.MediumLevelILFunction(handle = mlil)
+		hlil = core.BNGetDisassemblyTextRendererHighLevelILFunction(self.handle)
+		if hlil:
+			return binaryninja.highlevelil.HighLevelILFunction(handle = hlil)
 		return None
 
 	@property

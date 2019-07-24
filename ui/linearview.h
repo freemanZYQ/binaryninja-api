@@ -247,6 +247,7 @@ public:
 	virtual HighlightTokenState getHighlightTokenState() override { return m_highlight; }
 
 	void toggleOption(BNDisassemblyOption option);
+	void setOption(BNDisassemblyOption option, bool state);
 
 	virtual bool goToReference(FunctionRef func, uint64_t source, uint64_t target) override;
 	QFont getFont() override { return m_render.getFont(); }
