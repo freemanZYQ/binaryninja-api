@@ -1062,6 +1062,8 @@ extern "C"
 		HLIL_GOTO,
 		HLIL_LABEL,
 
+		HLIL_VAR_DECLARE,
+		HLIL_VAR_INIT,
 		HLIL_ASSIGN,
 		HLIL_ASSIGN_UNPACK,
 		HLIL_VAR,
@@ -1154,6 +1156,7 @@ extern "C"
 		HLIL_FCMP_UO,
 
 		// The following instructions are only used in SSA form
+		HLIL_VAR_INIT_SSA,
 		HLIL_ASSIGN_MEM_SSA,
 		HLIL_ASSIGN_UNPACK_MEM_SSA,
 		HLIL_VAR_SSA,
