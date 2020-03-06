@@ -4,12 +4,20 @@
 #include <QtCore/QItemSelectionModel>
 #include <QtCore/QSortFilterProxyModel>
 #include <QtCore/QModelIndex>
+#include <QtGui/QImage>
+#include <QtCore/QParallelAnimationGroup>
 #include <QtWidgets/QListView>
 #include <QtWidgets/QStyledItemDelegate>
 #include <QtWidgets/QTreeView>
 #include <QtWidgets/QTableView>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QComboBox>
-#include <QtGui/QImage>
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QFrame>
+#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QScrollArea>
+#include <QtWidgets/QToolButton>
+
 #include <vector>
 #include <deque>
 #include <memory>
@@ -48,10 +56,9 @@ protected:
 
 public:
 	explicit XrefItem();
-	explicit XrefItem(XrefHeader* parent);
 	explicit XrefItem(XrefHeader* parent, XrefType type);
 	explicit XrefItem(BinaryNinja::ReferenceSource referenceSource, XrefType type, XrefDirection direction);
-	explicit XrefItem(const XrefItem& ref);
+	XrefItem(const XrefItem& ref);
 	virtual ~XrefItem();
 
 	XrefDirection direction() const { return m_direction; }
@@ -109,6 +116,7 @@ public:
 class XrefCodeReferences: public XrefHeader
 {
 	std::map<FunctionRef, XrefFunctionHeader*> m_refs;
+	std::deque<XrefFunctionHeader*> m_refList;
 public:
 	XrefCodeReferences(XrefHeader* parent);
 	virtual ~XrefCodeReferences();
@@ -233,12 +241,19 @@ class CrossReferenceFilterProxyModel : public QSortFilterProxyModel
 {
 	Q_OBJECT
 
+	bool m_showData = true;
+	bool m_showCode = true;
+	bool m_showIncoming = true;
+	bool m_showOutgoing = true;
+
 public:
 	CrossReferenceFilterProxyModel(QObject* parent = 0);
 protected:
-	// bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
+	virtual bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
 	virtual bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
-	// virtual QModelIndex index(int row, int column, const QModelIndex &parent) const override;
+public Q_SLOTS:
+	void directionChanged(int index);
+	void typeChanged(int index);
 };
 
 class CrossReferenceWidget;
@@ -255,7 +270,7 @@ public:
 	virtual bool getReference(const QModelIndex& idx, FunctionRef& func, uint64_t& addr) const = 0;
 	virtual QModelIndex nextIndex() = 0;
 	virtual QModelIndex prevIndex() = 0;
-	virtual QModelIndexList selectedIndexes() const = 0;
+	virtual QModelIndexList selectedRows() const = 0;
 	virtual bool hasSelection() const = 0;
 	virtual void setNewSelection(std::vector<XrefItem>& refs, bool newRefTarget) = 0;
 	virtual void updateFonts() = 0;
@@ -280,11 +295,11 @@ public:
 	void setNewSelection(std::vector<XrefItem>& refs, bool newRefTarget) override;
 	virtual QModelIndex nextIndex() override;
 	virtual QModelIndex prevIndex() override;
-	virtual bool hasSelection() const override { return selectedIndexes().size() != 0; }
+	virtual bool hasSelection() const override { return selectionModel()->selectedRows().size() != 0; }
 	virtual void mouseMoveEvent(QMouseEvent* e) override;
 	virtual void mousePressEvent(QMouseEvent* e) override;
 	virtual void keyPressEvent(QKeyEvent* e) override;
-	virtual QModelIndexList selectedIndexes() const override { return QTreeView::selectedIndexes(); }
+	virtual QModelIndexList selectedRows() const override { return selectionModel()->selectedRows(); }
 	virtual void updateFonts() override;
 };
 
@@ -299,9 +314,6 @@ class BINARYNINJAUIAPI CrossReferenceTable: public QTableView, public CrossRefer
 
 	int m_charWidth = 0;
 	int m_charHeight = 0;
-protected:
-	virtual int sizeHintForRow(int row) const override;
-	virtual int sizeHintForColumn(int column) const override;
 
 public:
 	CrossReferenceTable(CrossReferenceWidget* parent, ViewFrame* view, BinaryViewRef data);
@@ -310,17 +322,19 @@ public:
 	void setNewSelection(std::vector<XrefItem>& refs, bool newRefTarget) override;
 	virtual QModelIndex nextIndex() override;
 	virtual QModelIndex prevIndex() override;
-	virtual bool hasSelection() const override { return selectedIndexes().size() != 0; }
-	virtual QModelIndexList selectedIndexes() const override { return QTableView::selectedIndexes(); }
+	virtual bool hasSelection() const override { return selectionModel()->selectedRows().size() != 0; }
+	virtual QModelIndexList selectedRows() const override { return selectionModel()->selectedRows(); }
 	virtual bool getReference(const QModelIndex& idx, FunctionRef& func, uint64_t& addr) const override;
 	virtual void mouseMoveEvent(QMouseEvent* e) override;
 	virtual void mousePressEvent(QMouseEvent* e) override;
 	virtual void keyPressEvent(QKeyEvent* e) override;
 	virtual QModelIndex translateIndex(const QModelIndex& idx) const override { return m_model->mapToSource(idx); }
 	virtual void updateFonts() override;
+public Q_SLOTS:
+	void updateTextFilter(const QString& filterText);
 };
 
-
+class ExpandableGroup;
 class BINARYNINJAUIAPI CrossReferenceWidget: public QWidget, public DockContextHandler
 {
 	Q_OBJECT
@@ -329,6 +343,9 @@ class BINARYNINJAUIAPI CrossReferenceWidget: public QWidget, public DockContextH
 	ViewFrame* m_view;
 	BinaryViewRef m_data;
 	QAbstractItemView* m_object;
+	QLabel* m_label;
+	QCheckBox* m_pinRefs;
+	QComboBox* m_direction, *m_type;
 	CrossReferenceTable* m_table;
 	CrossReferenceTree* m_tree;
 	CrossReferenceContainer* m_container;
@@ -338,21 +355,28 @@ class BINARYNINJAUIAPI CrossReferenceWidget: public QWidget, public DockContextH
 	QPoint m_hoverPos;
 	QStringList m_historyEntries;
 	int m_historySize;
-	QComboBox* m_combo;
+	QLineEdit* m_lineEdit;
+	ExpandableGroup* m_group;
 
 	uint64_t m_curRefTarget = 0;
 	uint64_t m_curRefTargetEnd = 0;
+	uint64_t m_newRefTarget = 0;
+	uint64_t m_newRefTargetEnd = 0;
 	bool m_navigating = false;
 	bool m_navToNextOrPrevStarted = false;
+	bool m_pinned;
 
 	virtual void contextMenuEvent(QContextMenuEvent* event) override;
 	virtual void wheelEvent(QWheelEvent* e) override;
+
 public:
-	CrossReferenceWidget(ViewFrame* view, BinaryViewRef data);
+	CrossReferenceWidget(ViewFrame* view, BinaryViewRef data, bool pinned);
 	virtual void notifyFontChanged() override;
 	virtual bool shouldBeVisible(ViewFrame* frame) override;
 
 	virtual void setCurrentSelection(uint64_t begin, uint64_t end);
+	virtual void setCurrentPinnedSelection(uint64_t begin, uint64_t end);
+	void updatePinnedSelection();
 	virtual void navigateToNext();
 	virtual void navigateToPrev();
 	virtual bool selectFirstRow();
@@ -362,6 +386,7 @@ public:
 	virtual void restartHoverTimer(QMouseEvent* e);
 	virtual void startHoverTimer(QMouseEvent* e);
 	virtual void keyPressEvent(QKeyEvent* e) override;
+	virtual void keyPressHandler(QKeyEvent* e);
 	void useTableView(bool tableView, bool init);
 	bool tableView() const { return m_useTableView; }
 
@@ -370,4 +395,25 @@ private Q_SLOTS:
 
 public Q_SLOTS:
 	void referenceActivated(const QModelIndex& idx);
+	void pinnedStateChanged(bool state);
+};
+
+
+class BINARYNINJAUIAPI ExpandableGroup : public QWidget
+{
+	Q_OBJECT
+
+private:
+	QToolButton* m_button;
+	QParallelAnimationGroup* m_animation;
+	QScrollArea* m_content;
+	int m_duration = 100;
+
+public Q_SLOTS:
+	void toggle(bool collapsed);
+
+public:
+	explicit ExpandableGroup(const QString& title = "", QWidget* parent = nullptr);
+	void setContentLayout(QLayout* contentLayout);
+	void setTitle(const QString& title) { m_button->setText(title); }
 };
